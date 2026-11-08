@@ -5,12 +5,12 @@
 --=====================================================================
 
 local G = (getgenv and getgenv()) or _G
-local SESSION_KEYS = { "__GoodHub", "__KzoyzOpus", "__GTFarm" } -- dua terakhir = nama versi lama
+local H = {} -- semua fungsi bantu ada di sini (hemat jatah 200 local)
 
 ---------------------------------------------------------------------
 -- SESI & CLEANUP
 ---------------------------------------------------------------------
-for _, key in ipairs(SESSION_KEYS) do
+for _, key in ipairs({ "__GoodHub", "__KzoyzOpus", "__GTFarm" }) do
     local old = G[key]
     if type(old) == "table" and type(old.Cleanup) == "function" then
         pcall(old.Cleanup)
@@ -26,13 +26,13 @@ local function alive()
 end
 
 -- Daftarkan koneksi supaya otomatis diputus saat Cleanup
-local function track(conn)
+function H.track(conn)
     if conn then Session.Connections[#Session.Connections + 1] = conn end
     return conn
 end
 
 -- Daftarkan fungsi pembersih (hapus UI, restore hook, dst)
-local function onCleanup(fn)
+function H.onCleanup(fn)
     Session.Destroyers[#Session.Destroyers + 1] = fn
 end
 
@@ -53,14 +53,14 @@ end
 ---------------------------------------------------------------------
 -- IDENTITAS THREAD (tanpa coroutine yang bisa bentrok)
 ---------------------------------------------------------------------
-local getId = getthreadidentity or get_thread_identity or getidentity
+H.getId = getthreadidentity or get_thread_identity or getidentity
     or (syn and syn.get_thread_identity)
-local setId = setthreadidentity or set_thread_identity or setidentity
+H.setId = setthreadidentity or set_thread_identity or setidentity
     or (syn and syn.set_thread_identity)
 
 do
-    if type(getId) == "function" then
-        local ok, v = pcall(getId)
+    if type(H.getId) == "function" then
+        local ok, v = pcall(H.getId)
         if ok then Session.Ident = v end
     end
 end
@@ -68,8 +68,8 @@ end
 local UI = {}
 
 function UI.ident()
-    if type(getId) ~= "function" then return nil end
-    local ok, v = pcall(getId)
+    if type(H.getId) ~= "function" then return nil end
+    local ok, v = pcall(H.getId)
     return ok and v or nil
 end
 
@@ -77,12 +77,12 @@ end
 -- fn tidak boleh yield (jangan task.wait / WaitForChild di dalamnya).
 function UI.exec(fn)
     local prev = UI.ident()
-    if Session.Ident and type(setId) == "function" then
-        pcall(setId, Session.Ident)
+    if Session.Ident and type(H.setId) == "function" then
+        pcall(H.setId, Session.Ident)
     end
     local ok, err = pcall(fn)
-    if prev and type(setId) == "function" then
-        pcall(setId, prev)
+    if prev and type(H.setId) == "function" then
+        pcall(H.setId, prev)
     end
     if ok then return true end
     return false, tostring(err)
@@ -113,23 +113,23 @@ end
 ---------------------------------------------------------------------
 -- HELPER AMAN: WaitForChild ber-timeout & require ber-pcall
 ---------------------------------------------------------------------
-local function fail(msg)
+function H.fail(msg)
     warn("[Good Hub] " .. msg)
     Session.Cleanup()
     error("[Good Hub] " .. msg, 0)
 end
 
 -- Tunggu child maksimal `timeout` detik. required=true -> hentikan script kalau tidak ada.
-local function waitFor(parent, name, timeout, required)
+function H.waitFor(parent, name, timeout, required)
     local obj = parent and parent:WaitForChild(name, timeout or 10)
     if not obj and required then
-        fail("Tidak menemukan '" .. tostring(name) .. "'. Game mungkin sudah update.")
+        H.fail("Tidak menemukan '" .. tostring(name) .. "'. Game mungkin sudah update.")
     end
     return obj
 end
 
 -- require aman: kembalikan ok, modul
-local function safeRequire(moduleScript, label)
+function H.safeRequire(moduleScript, label)
     if typeof(moduleScript) ~= "Instance" then
         return false, "modul " .. tostring(label) .. " tidak ada"
     end
@@ -149,27 +149,27 @@ local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = waitFor(LocalPlayer, "PlayerGui", 15, true)
+local PlayerGui = H.waitFor(LocalPlayer, "PlayerGui", 15, true)
 
-local Shared = waitFor(ReplicatedStorage, "Shared", 15, true)
-local WorldRemotes = waitFor(ReplicatedStorage, "WorldRemotes", 15, true)
+local Shared = H.waitFor(ReplicatedStorage, "Shared", 15, true)
+local WorldRemotes = H.waitFor(ReplicatedStorage, "WorldRemotes", 15, true)
 -- Remote lama (sebelum ByteNet). Hanya dipakai kalau fungsi baru tidak ada.
 local SetTileRemote = WorldRemotes:FindFirstChild("SetTile")
 
 -- Modul wajib: kalau gagal, script berhenti dengan pesan jelas (bukan crash diam-diam)
-local okItemDB, ItemDB = safeRequire(waitFor(Shared, "ItemDB", 10), "ItemDB")
-local okInv, InventoryModule = safeRequire(waitFor(Shared, "Inventory", 10), "Inventory")
+local okItemDB, ItemDB = H.safeRequire(H.waitFor(Shared, "ItemDB", 10), "ItemDB")
+local okInv, InventoryModule = H.safeRequire(H.waitFor(Shared, "Inventory", 10), "Inventory")
 if not okItemDB or not okInv then
-    fail("Modul ItemDB / Inventory gagal dimuat. Game mungkin sudah update.")
+    H.fail("Modul ItemDB / Inventory gagal dimuat. Game mungkin sudah update.")
 end
 
 -- Modul opsional
-local NetOk, Net = safeRequire(Shared:FindFirstChild("Net"), "Net")
-local GameGui = waitFor(PlayerGui, "GameGui", 15, true)
-local ParticlesOk, ParticlesModule = safeRequire(waitFor(GameGui, "Particles", 10), "Particles")
-local MenuModOk, MenuModule = safeRequire(waitFor(GameGui, "WorldMenu", 10), "WorldMenu")
-local RolesOk, RolesModule = safeRequire(Shared:FindFirstChild("Roles"), "Roles")
-local SfxOk, SfxModule = safeRequire(Shared:FindFirstChild("Sfx"), "Sfx")
+local NetOk, Net = H.safeRequire(Shared:FindFirstChild("Net"), "Net")
+local GameGui = H.waitFor(PlayerGui, "GameGui", 15, true)
+local ParticlesOk, ParticlesModule = H.safeRequire(H.waitFor(GameGui, "Particles", 10), "Particles")
+local MenuModOk, MenuModule = H.safeRequire(H.waitFor(GameGui, "WorldMenu", 10), "WorldMenu")
+local RolesOk, RolesModule = H.safeRequire(Shared:FindFirstChild("Roles"), "Roles")
+local SfxOk, SfxModule = H.safeRequire(Shared:FindFirstChild("Sfx"), "Sfx")
 
 ---------------------------------------------------------------------
 -- WINDUI (dimuat aman)
@@ -180,15 +180,15 @@ local WINDUI_URL = "https://github.com/Footagesus/WindUI/releases/latest/downloa
 
 local WindUI
 do
-    local okGet, src = pcall(game.HttpGet, game, WINDUI_URL)
+    local okGet, src = pcall(function() return game:HttpGet(WINDUI_URL) end)
     if not okGet or type(src) ~= "string" or #src < 100 then
-        fail("Gagal download WindUI (cek koneksi / GitHub): " .. tostring(src))
+        H.fail("Gagal download WindUI (cek koneksi / GitHub): " .. tostring(src))
     end
     local chunk, cErr = loadstring(src)
-    if not chunk then fail("WindUI rusak: " .. tostring(cErr)) end
+    if not chunk then H.fail("WindUI rusak: " .. tostring(cErr)) end
     local okRun, lib = pcall(chunk)
     if not okRun or type(lib) ~= "table" then
-        fail("WindUI gagal dijalankan: " .. tostring(lib))
+        H.fail("WindUI gagal dijalankan: " .. tostring(lib))
     end
     WindUI = lib
 end
@@ -211,24 +211,24 @@ pcall(function()
 end)
 
 ---------------------------------------------------------------------
--- PENERJEMAH: panggil installTranslator(I18N) SETELAH tabel I18N.EN / I18N.PH
+-- PENERJEMAH: panggil H.installTranslator(I18N) SETELAH tabel I18N.EN / I18N.PH
 -- di script asli selesai dibuat. Ini menggantikan I18N.T dan I18N.build lama.
 ---------------------------------------------------------------------
-local function isLetter(ch)
+function H.isLetter(ch)
     return ch ~= "" and ch:match("[%a\128-\255]") ~= nil
 end
 
-local function replacePlain(text, from, to)
-    local firstLetter = isLetter(from:sub(1, 1))
-    local lastLetter = isLetter(from:sub(-1))
+function H.replacePlain(text, from, to)
+    local firstLetter = H.isLetter(from:sub(1, 1))
+    local lastLetter = H.isLetter(from:sub(-1))
     local out, pos = {}, 1
     while true do
         local s, e = text:find(from, pos, true)
         if not s then break end
         local before = s > 1 and text:sub(s - 1, s - 1) or ""
         local after = text:sub(e + 1, e + 1)
-        local okBefore = not (firstLetter and isLetter(before))
-        local okAfter = not (lastLetter and isLetter(after))
+        local okBefore = not (firstLetter and H.isLetter(before))
+        local okAfter = not (lastLetter and H.isLetter(after))
         out[#out + 1] = text:sub(pos, s - 1)
         out[#out + 1] = (okBefore and okAfter) and to or from
         pos = e + 1
@@ -237,7 +237,7 @@ local function replacePlain(text, from, to)
     return table.concat(out)
 end
 
-local function installTranslator(I18N)
+function H.installTranslator(I18N)
     function I18N.build()
         local seen, list = {}, {}
         for _, pair in ipairs(I18N.PH or {}) do
@@ -256,7 +256,7 @@ local function installTranslator(I18N)
         if exact then return exact end
         if not I18N.Sorted then I18N.build() end
         for _, pair in ipairs(I18N.Sorted) do
-            text = replacePlain(text, pair[1], pair[2])
+            text = H.replacePlain(text, pair[1], pair[2])
         end
         return text
     end
